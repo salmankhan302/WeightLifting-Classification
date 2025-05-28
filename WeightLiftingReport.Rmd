@@ -1,0 +1,110 @@
+---
+title: "Weight Lifting Exercise Classification Report"
+author: "Salman Saleem"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    theme: journal
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, cache = TRUE)
+```
+
+## 1. Introduction
+This report describes the development of a machine learning model to classify weightlifting exercises into five categories (A, B, C, D, E) based on sensor data from accelerometers.
+
+Data Sources
+Training Data: pml-training.csv (19,622 observations)
+
+Test Data: pml-testing.csv (20 observations)
+
+## 2 Data Loading and Preprocessing
+#2.1 Load Libraries and Data
+```{r }
+# Load Libraries and Data
+library(caret)
+library(randomForest)
+library(dplyr)
+library(tidyr)
+
+# Download data if not already present
+if (!file.exists("pml-training.csv")) {
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+                "pml-training.csv", method = "curl")
+}
+if (!file.exists("pml-testing.csv")) {
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+                "pml-testing.csv", method = "curl")
+}
+
+# Load data
+train_data <- read.csv("pml-training.csv", na.strings = c("NA", "", "#DIV/0!"))
+test_data <- read.csv("pml-testing.csv", na.strings = c("NA", "", "#DIV/0!"))
+```
+
+## 2.2 Data Cleaning
+
+You can also embed plots, for example:
+
+```{r }
+# Remove columns with >95% NA values
+train_data <- train_data[, colMeans(is.na(train_data)) < 0.95]
+test_data <- test_data[, colMeans(is.na(test_data)) < 0.95]
+
+# Remove metadata columns (non-predictive)
+cols_to_remove <- c("X", "user_name", "raw_timestamp_part_1", 
+                   "raw_timestamp_part_2", "cvtd_timestamp",
+                   "new_window", "num_window")
+train_data <- train_data %>% select(-all_of(cols_to_remove))
+test_data <- test_data %>% select(-all_of(cols_to_remove))
+
+# Convert classe to factor
+train_data$classe <- factor(train_data$classe, levels = c("A", "B", "C", "D", "E"))
+
+# Ensure all remaining columns are numeric
+numeric_cols <- sapply(train_data, is.numeric)
+train_data <- train_data[, numeric_cols | names(train_data) == "classe"]
+test_data <- test_data[, numeric_cols[names(numeric_cols) %in% names(test_data)]]
+```
+## 3. Data Partitioning
+Split the training data into training (70%) and validation (30%) sets
+
+```{r }
+set.seed(123)
+train_idx <- createDataPartition(train_data$classe, p = 0.7, list = FALSE)
+training <- train_data[train_idx, ]
+validation <- train_data[-train_idx, ]
+```
+## 4. Model Training (Random Forest)
+
+``` {r }
+# Train model with cross-validation
+ctrl <- trainControl(method = "cv", number = 5)
+model_rf <- train(classe ~ ., 
+                 data = training, 
+                 method = "rf",
+                 trControl = ctrl,
+                 ntree = 100,
+                 importance = TRUE)
+
+# View model details
+print(model_rf)
+```
+## 5. Model Evaluation
+
+```{r}
+# Validation Set Performance
+pred_val <- predict(model_rf, validation)
+confusionMatrix(pred_val, validation$classe)
+```
+## 6. Final Predictions on Test Set
+```{r }
+test_pred <- predict(model_rf, test_data)
+test_pred
+```
